@@ -230,7 +230,7 @@ req <- request("https://anthropic.com") %>%
     `anthropic-version` = "2023-06-01",
     `content-type`      = "application/json"
   ) %>%
-  req_body_json(payload) %>%
+  req_body_raw(jsonlite::toJSON(payload, auto_unbox = TRUE), "application/json") %>%
   req_timeout(60)
 
 response <- req_perform(req)
