@@ -118,9 +118,12 @@ req <- request("https://anthropic.com") %>%
     `content-type`      = "application/json"
   ) %>%
   req_body_json(list(
-    # UPDATE: Swapped legacy 3.5 Sonnet for the modern Sonnet 5 endpoint
-    model      = "claude-sonnet-5",
+    model      = "claude-sonnet-5", # Correct active endpoint ID
     max_tokens = 1200,
     system     = system_prompt,
     messages   = list(list(role = "user", content = user_prompt))
   ))
+
+response <- req_perform(req)
+body     <- resp_body_json(response)
+ai_play_selections <- body$content[[1]]$text # FIX: Changed [] to [[1]] for clean list parsing
