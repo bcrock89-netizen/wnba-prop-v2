@@ -1,5 +1,5 @@
 # ==============================================================================
-# PIPELINE STEP 2: AI MATCHUP ENGINE (ROBUST METRICS VERSION)
+# PIPELINE STEP 2: AI MATCHUP ENGINE (FULL BACKLOG CONTEXT + 30/14 DAY METRICS)
 # ==============================================================================
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
@@ -7,27 +7,67 @@ pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
 # ------------------------------------------------------------------------------
 # 1. LOAD DATASET AND FORCE ALL HEADERS TO LOWERCASE
 # ------------------------------------------------------------------------------
-message("Loading dataset and forcing headers to lowercase...")
+message("Loading full dataset backlog and forcing headers to lowercase...")
 raw_props <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE)
 colnames(raw_props) <- tolower(stringr::str_replace_all(colnames(raw_props), " ", "_"))
 
 props_history <- raw_props %>%
   mutate(
     Parsed_Date = as.Date(date),
-    # Force text formatting metrics into real math numbers safely
     profit = as.numeric(stringr::str_remove_all(as.character(profit), "[\\$, ]")),
     dtm    = as.numeric(stringr::str_remove_all(as.character(dtm), "[\\$, ]")),
     win_probability = as.numeric(stringr::str_remove_all(as.character(win_probability), "[% ]")),
     win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability)
   ) %>%
-  # SAFE GUARD: Overwrite any coerced NA cells to baseline 0 values to avoid calculations crash
   mutate(
     profit = ifelse(is.na(profit), 0, profit),
     dtm    = ifelse(is.na(dtm), 0, dtm)
   )
 
 # ------------------------------------------------------------------------------
-# 2. LOAD PBP DATA AND GENERATE LIVE OFFENSIVE/DEFENSIVE METRICS
+# 2. CHECK TODAY'S SLATE BEFORE RUNNING ADVANCED MATH
+# ------------------------------------------------------------------------------
+today_date <- Sys.Date()
+message(paste("Checking WNBA schedule for:", today_date))
+
+full_schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
+  mutate(game_date = as.Date(game_date))
+
+today_schedule <- full_schedule %>%
+  filter(game_date == today_date)
+
+# CRITICAL SCHEDULE GUARD (REFINED BREAKDOWN TIMELINE)
+if (nrow(today_schedule) == 0) {
+  if (!dir.exists("predictions")) dir.create("predictions")
+  
+  # Calculate 30 and 14 day windows only for the header dashboard
+  roi_summary <- props_history %>%
+    summarize(
+      bets_30   = sum(Parsed_Date >= (today_date - 30), na.rm = TRUE), 
+      profit_30 = sum(ifelse(Parsed_Date >= (today_date - 30), profit, 0), na.rm = TRUE), 
+      roi_30    = (profit_30 / max(bets_30, 1)) * 100,
+      
+      bets_14   = sum(Parsed_Date >= (today_date - 14), na.rm = TRUE), 
+      profit_14 = sum(ifelse(Parsed_Date >= (today_date - 14), profit, 0), na.rm = TRUE), 
+      roi_14    = (profit_14 / max(bets_14, 1)) * 100
+    )
+  
+  no_game_report <- paste0(
+    "# 📊 Short-Term Model Performance Dashboard\n\n",
+    "| Timeline | Total Tracked Bets | Total Profit (Units) | Return on Investment (ROI) |\n",
+    "| :--- | :--- | :--- | :--- |\n",
+    "| **Last 30 Days** | ", roi_summary$bets_30, " | ", round(roi_summary$profit_30, 2), " | **", round(roi_summary$roi_30, 2), "%** |\n",
+    "| **Last 14 Days** | ", roi_summary$bets_14, " | ", round(roi_summary$profit_14, 2), " | **", round(roi_summary$roi_14, 2), "%** |\n\n",
+    "## 📅 Daily Slate Alert\nNo WNBA games scheduled for today. The pipeline processed your full backlog profiles successfully but skipped the Claude API request to conserve tokens."
+  )
+  
+  writeLines(no_game_report, paste0("predictions/plays_", today_date, ".md"))
+  message("Success: No games today. Only 30 and 14-day header metrics saved.")
+  quit(status = 0)
+}
+
+# ------------------------------------------------------------------------------
+# 3. LOAD PBP DATA AND GENERATE LIVE OFFENSIVE/DEFENSIVE METRICS
 # ------------------------------------------------------------------------------
 message("Calculating Team Efficiency and Defensive Matchup Rankings...")
 pbp_season <- readr::read_csv("data/wnba_pbp_2026.csv", show_col_types = FALSE)
@@ -56,16 +96,10 @@ team_rankings <- pbp_season %>%
   select(team, off_rank, def_rank, off_ppg, def_ppg_allowed)
 
 # ------------------------------------------------------------------------------
-# 3. CALCULATE REST AND BACK-TO-BACK FATIGUE VARIABLES
+# 4. CALCULATE REST AND BACK-TO-BACK FATIGUE VARIABLES
 # ------------------------------------------------------------------------------
 message("Calculating team rest advantages and back-to-back schedules...")
-today_date <- Sys.Date()
-
-full_schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
-  mutate(game_date = as.Date(game_date))
-
-historical_dates <- full_schedule %>%
-  filter(game_date <= today_date)
+historical_dates <- full_schedule %>% filter(game_date <= today_date)
 
 get_last_game_date <- function(team_name, current_date) {
   last_game <- historical_dates %>%
@@ -74,15 +108,6 @@ get_last_game_date <- function(team_name, current_date) {
     head(1)
   if (nrow(last_game) == 0) return(current_date - 5)
   return(last_game$game_date)
-}
-
-today_schedule <- full_schedule %>%
-  filter(game_date == today_date)
-
-if (nrow(today_schedule) == 0) {
-  if (!dir.exists("predictions")) dir.create("predictions")
-  writeLines("# 📊 Daily Report\nNo games scheduled for today.", paste0("predictions/plays_", today_date, ".md"))
-  quit(status = 0)
 }
 
 matchup_metrics <- list()
@@ -115,48 +140,68 @@ for(i in 1:nrow(today_schedule)) {
 matchup_metrics_df <- bind_rows(matchup_metrics)
 
 # ------------------------------------------------------------------------------
-# 4. AGGREGATE THE BACKLOG DATA
+# 5. AGGREGATE BOTH THE SNAPSHOT HEADER AND THE ALL-TIME BACKLOG
 # ------------------------------------------------------------------------------
-message("Aggregating portfolio health metrics...")
+message("Aggregating timelines and compressing full 7,500+ row backlog...")
+
+# High-Level Header ROI (30 and 14 days only)
 roi_summary <- props_history %>%
   summarize(
-    season_bets   = n(), season_profit = sum(profit, na.rm = TRUE), season_roi = (season_profit / season_bets) * 100,
-    bets_30       = sum(Parsed_Date >= (today_date - 30), na.rm = TRUE), profit_30 = sum(ifelse(Parsed_Date >= (today_date - 30), profit, 0), na.rm = TRUE), roi_30 = (profit_30 / max(bets_30, 1)) * 100,
-    bets_14       = sum(Parsed_Date >= (today_date - 14), na.rm = TRUE), profit_14 = sum(ifelse(Parsed_Date >= (today_date - 14), profit, 0), na.rm = TRUE), roi_14 = (profit_14 / max(bets_14, 1)) * 100
+    bets_30       = sum(Parsed_Date >= (today_date - 30), na.rm = TRUE), 
+    profit_30     = sum(ifelse(Parsed_Date >= (today_date - 30), profit, 0), na.rm = TRUE), 
+    roi_30        = (profit_30 / max(bets_30, 1)) * 100,
+    
+    bets_14       = sum(Parsed_Date >= (today_date - 14), na.rm = TRUE), 
+    profit_14     = sum(ifelse(Parsed_Date >= (today_date - 14), profit, 0), na.rm = TRUE), 
+    roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
+# KEEP ALL-TIME BACKLOG CONTENT: Deep Player Profiles derived from the full history
 player_backlog_profiles <- props_history %>%
   group_by(player) %>%
-  summarize(total_tracked_bets = n(), overall_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), accumulated_profit = sum(profit, na.rm = TRUE), avg_model_dtm = mean(dtm, na.rm = TRUE), .groups = "drop") %>%
+  summarize(
+    total_tracked_bets = n(), 
+    overall_win_rate = sum(result %in= c("Win", "W"), na.rm = TRUE) / n(), 
+    accumulated_profit = sum(profit, na.rm = TRUE), 
+    avg_model_dtm = mean(dtm, na.rm = TRUE), 
+    .groups = "drop"
+  ) %>%
   filter(total_tracked_bets >= 3)
 
+# KEEP ALL-TIME BACKLOG CONTENT: Deep Category Systems from the full history
 system_backlog_profiles <- props_history %>%
   group_by(bet_type, side) %>%
-  summarize(total_system_bets = n(), system_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), system_net_profit = sum(profit, na.rm = TRUE), system_roi = (system_net_profit / total_system_bets) * 100, .groups = "drop")
+  summarize(
+    total_system_bets = n(), 
+    system_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), 
+    system_net_profit = sum(profit, na.rm = TRUE), 
+    system_roi = (system_net_profit / total_system_bets) * 100, 
+    .groups = "drop"
+  )
 
-recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_type, side, line, dtm, result, profit)
+recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_typer, side, line, dtm, result, profit)
 
 # ------------------------------------------------------------------------------
-# 5. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
+# 6. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
 # ------------------------------------------------------------------------------
 matchups_text <- if("matchup" %in% names(today_schedule)) paste(today_schedule$matchup, collapse = ", ") else paste(today_schedule$name, collapse = ", ")
 
-system_prompt <- "You are a specialized risk-management AI for a sports betting syndicate. Your expertise is cross-referencing all-time trend data against raw situational fatigue variables."
+system_prompt <- "You are a specialized risk-management AI for a sports betting syndicate. Your expertise is cross-referencing full historical backlog arrays against recent momentum shifts."
 
 user_prompt <- paste0(
   "--- TODAY'S SCHEDULE, EFFICIENCY RANKINGS, AND FATIGUE METRICS ---\n", jsonlite::toJSON(matchup_metrics_df, auto_unbox = TRUE), "\n\n",
-  "--- PORTFOLIO TIMELINE ROI SUMMARY ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
-  "--- HISTORICAL SPREADSHEET PLAYER BASELINES ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
-  "--- HISTORICAL STRATEGIC SYSTEM PROP type ROIs ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
-  "--- CURRENT 30-BET ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
+  "--- PORTFOLIO TIMELINE ROI SUMMARY (30 & 14 DAYS ONLY) ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
+  "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
+  "--- FULL ALL-TIME BACKLOG SYSTEM PROP TYPER ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
+  "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
   "Instructions:\n",
-  "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Season-Long, Last 30, and Last 14 Days.\n",
-  "2. Select the top 3 high-value prop plays for today. You must prioritize situational fatigue dynamics.\n",
+  "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
+  "2. Select the top 3 high-value prop plays for today.\n",
   "3. Critically analyze lines where teams are on a back-to-back or have severely diminished rest metrics while on the road.\n",
   "4. For each play, use this exact structure:\n",
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
-  "   * **Historical System Context:** Defend using your all-time backlog data trends paired with the active 14-day momentum layer."
+  "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
