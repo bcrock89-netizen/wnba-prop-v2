@@ -17,8 +17,8 @@ props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALS
 today_date <- Sys.Date()
 message(paste("Checking matchups for:", today_date))
 
-schedule <- wehoop::espn_wnba_schedule(season = 2026) %>%
-  filter(as.Date(date) == today_date)
+# FIX: Changed espn_wnba_schedule to espn_wnba_scoreboard
+schedule <- wehoop::espn_wnba_scoreboard(dates = format(today_date, "%Y%m%d"))
 
 if (nrow(schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
@@ -63,20 +63,14 @@ bet_type_momentum <- props_history %>%
 # ------------------------------------------------------------------------------
 # 4. CONSTRUCT COMPACT AI PAYLOAD AND SYSTEM PROMPT
 # ------------------------------------------------------------------------------
-matchups_text <- paste(schedule$short_name, collapse = ", ")
-
-system_prompt <- "You are a quantitative sports betting machine. Your target is maximizing overall portfolio ROI by identifying shifting market efficiencies."
-
-user_prompt <- paste0(
-  "Today's Matchups: ", matchups_text, "\n\n",
-  "--- OVERALL ACCURACY HEADER DATA ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
-  "--- ROI BY BET TYPE STRATIFICATION ---\n", jsonlite::toJSON(bet_type_momentum, auto_unbox = TRUE), "\n\n",
-  "Instructions:\n",
-  "1. CRITICAL: You must begin your response with a clean Markdown dashboard header grid summarizing our overall portfolio health (Total Bets, Profit, and ROI) for Season-Long, Last 30 Days, and Last 14 Days using the exact values from the OVERALL ACCURACY HEADER DATA.\n",
-  "2. Evaluate today's game matchups against our historical data splits.\n",
-  "3. Prioritize 'Bet Typer' categories where our last 14-day ROI is climbing significantly above our season baseline (positive momentum), or high steady baselines.\n",
-  "4. Output the top 3 high-value prop plays for today. For each selection, include a brief 2-sentence statistical justification highlighting season-long baseline vs recent momentum."
-)
+# Fallback logic to ensure we extract game descriptions cleanly from the scoreboard
+matchups_text <- if("matchup" %in% names(schedule)) {
+  paste(schedule$matchup, collapse = ", ")
+} else if("short_name" %in% names(schedule)) {
+  paste(schedule$short_name, collapse = ", ")
+} else {
+  "Games are scheduled for today. Check standard league schedule slots."
+}
 
 # ------------------------------------------------------------------------------
 # 5. CALL ANTHROPIC CLAUDE API
