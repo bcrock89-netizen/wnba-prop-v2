@@ -124,7 +124,7 @@ player_backlog_profiles <- props_history %>%
   filter(total_tracked_bets >= 3)
 
 system_backlog_profiles <- props_history %>%
-  group_by(bet_typer, side) %>%
+  group_by(bet_type, side) %>%
   summarize(total_system_bets = n(), system_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), system_net_profit = sum(profit, na.rm = TRUE), system_roi = (system_net_profit / total_system_bets) * 100, .groups = "drop")
 
 recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_typer, side, line, dtm, result, profit)
