@@ -1,5 +1,5 @@
 # ==============================================================================
-# PIPELINE STEP 2: AI MATCHUP ENGINE (FULL BACKLOG CONTEXT + 30/14 DAY METRICS)
+# PIPELINE STEP 2: AI MATCHUP ENGINE (TIME-ZONE FIXED PRODUCTION VERSION)
 # ==============================================================================
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
@@ -25,10 +25,11 @@ props_history <- raw_props %>%
   )
 
 # ------------------------------------------------------------------------------
-# 2. CHECK TODAY'S SLATE BEFORE RUNNING ADVANCED MATH
+# 2. CHECK TODAY'S SLATE BEFORE RUNNING ADVANCED MATH (TIME-ZONE FIX)
 # ------------------------------------------------------------------------------
-today_date <- Sys.Date()
-message(paste("Checking WNBA schedule for:", today_date))
+# TIME-ZONE FIX: Force the cloud runner to check dates based on New York local time, not UTC
+today_date <- as.Date(lubridate::with_tz(Sys.time(), tzone = "America/New_York"))
+message(paste("Checking local New York date schedule for:", today_date))
 
 full_schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
   mutate(game_date = as.Date(game_date))
@@ -36,11 +37,10 @@ full_schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
 today_schedule <- full_schedule %>%
   filter(game_date == today_date)
 
-# CRITICAL SCHEDULE GUARD (REFINED BREAKDOWN TIMELINE)
+# FAIL-SAFE SCHEDULE GUARD
 if (nrow(today_schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
   
-  # Calculate 30 and 14 day windows only for the header dashboard
   roi_summary <- props_history %>%
     summarize(
       bets_30   = sum(Parsed_Date >= (today_date - 30), na.rm = TRUE), 
@@ -58,7 +58,7 @@ if (nrow(today_schedule) == 0) {
     "| :--- | :--- | :--- | :--- |\n",
     "| **Last 30 Days** | ", roi_summary$bets_30, " | ", round(roi_summary$profit_30, 2), " | **", round(roi_summary$roi_30, 2), "%** |\n",
     "| **Last 14 Days** | ", roi_summary$bets_14, " | ", round(roi_summary$profit_14, 2), " | **", round(roi_summary$roi_14, 2), "%** |\n\n",
-    "## 📅 Daily Slate Alert\nNo WNBA games scheduled for today. The pipeline processed your full backlog profiles successfully but skipped the Claude API request to conserve tokens."
+    "## 📅 Daily Slate Alert\nNo WNBA games scheduled for today. Filter metrics updated successfully."
   )
   
   writeLines(no_game_report, paste0("predictions/plays_", today_date, ".md"))
@@ -156,7 +156,6 @@ roi_summary <- props_history %>%
     roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
-# KEEP ALL-TIME BACKLOG CONTENT: Deep Player Profiles derived from the full history
 player_backlog_profiles <- props_history %>%
   group_by(player) %>%
   summarize(
@@ -168,7 +167,6 @@ player_backlog_profiles <- props_history %>%
   ) %>%
   filter(total_tracked_bets >= 3)
 
-# KEEP ALL-TIME BACKLOG CONTENT: Deep Category Systems from the full history
 system_backlog_profiles <- props_history %>%
   group_by(bet_type, side) %>%
   summarize(
@@ -179,12 +177,21 @@ system_backlog_profiles <- props_history %>%
     .groups = "drop"
   )
 
-recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_typer, side, line, dtm, result, profit)
+recent_30_momentum <- props_history %>% 
+  tail(30) %>% 
+  select(player, bet_type, side, line, dtm, result, profit)
 
 # ------------------------------------------------------------------------------
 # 6. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
 # ------------------------------------------------------------------------------
-matchups_text <- if("matchup" %in% names(today_schedule)) paste(today_schedule$matchup, collapse = ", ") else paste(today_schedule$name, collapse = ", ")
+# SCHEMA FIX: Dynamically checks columns for 'matchup', 'name', or 'short_name'
+matchups_text <- if("matchup" %in% names(today_schedule)) {
+  paste(today_schedule$matchup, collapse = ", ")
+} else if("name" %in% names(today_schedule)) {
+  paste(today_schedule$name, collapse = ", ")
+} else {
+  paste(today_schedule$short_name, collapse = ", ")
+}
 
 system_prompt <- "You are a specialized risk-management AI for a sports betting syndicate. Your expertise is cross-referencing full historical backlog arrays against recent momentum shifts."
 
@@ -192,7 +199,7 @@ user_prompt <- paste0(
   "--- TODAY'S SCHEDULE, EFFICIENCY RANKINGS, AND FATIGUE METRICS ---\n", jsonlite::toJSON(matchup_metrics_df, auto_unbox = TRUE), "\n\n",
   "--- PORTFOLIO TIMELINE ROI SUMMARY (30 & 14 DAYS ONLY) ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
   "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
-  "--- FULL ALL-TIME BACKLOG SYSTEM PROP TYPER ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
+  "--- FULL ALL-TIME BACKLOG SYSTEM PROP type ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
