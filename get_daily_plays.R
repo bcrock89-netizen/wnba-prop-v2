@@ -5,11 +5,22 @@ if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, janitor, stringr)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD DATASETS AND CLEAN NAMES
+# 1. LOAD DATASETS AND FORCE EXACT MANUALLY OVERRIDDEN NAMES
 # ------------------------------------------------------------------------------
 message("Loading historical tracking and seasonal datasets...")
-props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE) %>%
-  janitor::clean_names() %>% 
+
+# Read the CSV file but skip the messy first row of headers entirely
+raw_data <- readr::read_csv("data/tracked_props.csv", skip = 1, col_names = FALSE, show_col_types = FALSE)
+
+# Force your exact column names directly onto the dataset in order
+colnames(raw_data) <- c(
+  "date", "player", "bet_type", "side", "line", "odds", 
+  "win_probability", "dtm", "result", "projection", 
+  "stat_value", "profit", "be_prob", "day", "month"
+)
+
+# Parse your date column cleanly without using janitor
+props_history <- raw_data %>%
   mutate(Parsed_Date = as.Date(date))
 
 # ------------------------------------------------------------------------------
