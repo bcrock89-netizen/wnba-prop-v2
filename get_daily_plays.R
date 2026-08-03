@@ -9,7 +9,7 @@ pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite)
 # ------------------------------------------------------------------------------
 message("Loading historical tracking and seasonal datasets...")
 props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE) %>%
-  # This converts all names to clean lowercase with underscores (e.g. 'Bet Typer' -> 'bet_typer')
+  # This converts all names to clean lowercase with underscores (e.g. 'Bet Type' -> 'bet_type')
   janitor::clean_names() %>% 
   mutate(Parsed_Date = as.Date(date))
 
