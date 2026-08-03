@@ -104,18 +104,23 @@ user_prompt <- paste0(
   "4. Provide a clear 2-sentence mathematical defense for each play contrasting long-term baseline results against the recent 30-bet momentum layer."
 )
 
-# Call API
+# ------------------------------------------------------------------------------
+# 5. CALL ANTHROPIC CLAUDE API
+# ------------------------------------------------------------------------------
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY is missing!")
+if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
+message("Sending data payload to Claude Sonnet 5...")
 req <- request("https://anthropic.com") %>%
-  req_headers(`x-api-key` = api_key, `anthropic-version` = "2023-06-01", `content-type` = "application/json") %>%
-  req_body_json(list(model = "claude-3-5-sonnet-20240620", max_tokens = 1200, system = system_prompt, messages = list(list(role = "user", content = user_prompt))))
-
-response <- req_perform(req)
-body     <- resp_body_json(response)
-ai_play_selections <- body$content[]$text
-
-if (!dir.exists("predictions")) dir.create("predictions")
-writeLines(ai_play_selections, paste0("predictions/plays_", today_date, ".md"))
-message("Success! Selections written.")
+  req_headers(
+    `x-api-key`         = api_key,
+    `anthropic-version` = "2023-06-01",
+    `content-type`      = "application/json"
+  ) %>%
+  req_body_json(list(
+    # UPDATE: Swapped legacy 3.5 Sonnet for the modern Sonnet 5 endpoint
+    model      = "claude-sonnet-5",
+    max_tokens = 1200,
+    system     = system_prompt,
+    messages   = list(list(role = "user", content = user_prompt))
+  ))
