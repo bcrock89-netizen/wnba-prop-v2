@@ -161,7 +161,7 @@ player_backlog_profiles <- props_history %>%
   group_by(player) %>%
   summarize(
     total_tracked_bets = n(), 
-    overall_win_rate = sum(result %in= c("Win", "W"), na.rm = TRUE) / n(), 
+    overall_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), 
     accumulated_profit = sum(profit, na.rm = TRUE), 
     avg_model_dtm = mean(dtm, na.rm = TRUE), 
     .groups = "drop"
