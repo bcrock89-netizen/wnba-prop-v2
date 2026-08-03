@@ -1,0 +1,41 @@
+name: Daily wehoop Scraper
+
+on:
+  schedule:
+    # Runs every day at 4:00 AM UTC (12:00 AM EST)
+    - cron: '0 4 * * *'
+  workflow_dispatch: # Allows you to trigger it manually anytime
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Allows the bot to commit data back to your repo
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+
+      - name: Install dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::wehoop
+            any::dplyr
+            any::readr
+            any::pacman
+
+      - name: Run Scraper
+        run: Rscript scrape_season.R
+
+      - name: Commit and Push changes
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add data/wnba_pbp_2026.csv || echo "No changes to add"
+          git commit -m "Automated daily data update: $(date +'%Y-%m-%d')" || echo "No changes to commit"
+          git push origin main || echo "No changes to push"
