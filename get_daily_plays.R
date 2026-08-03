@@ -164,24 +164,31 @@ user_prompt <- paste0(
   "   * **Historical System Context:** Defend using your all-time backlog data trends paired with the active 14-day momentum layer."
 )
 
-# API Call Execution
+# ------------------------------------------------------------------------------
+# 5. CALL ANTHROPIC CLAUDE API
+# ------------------------------------------------------------------------------
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
-message("Transmitting fatigue-aware data to Claude...")
+message("Sending data payload to Claude Sonnet 4.6...")
 req <- request("https://anthropic.com") %>%
-  req_headers(`x-api-key` = api_key, `anthropic-version` = "2023-06-01", `content-type` = "application/json") %>%
+  req_headers(
+    `x-api-key`         = api_key,
+    `anthropic-version` = "2023-06-01",
+    `content-type`      = "application/json"
+  ) %>%
   req_body_json(list(
-    model       = "claude-3-5-sonnet-20241022",
+    # FIX: Correct endpoint ID for the full Sonnet 4.6 release
+    model       = "claude-sonnet-4-6", 
     max_tokens  = 1200,
-    temperature = 0.2,
+    temperature = 0.3,
     system      = system_prompt,
     messages    = list(list(role = "user", content = user_prompt))
   ))
 
 response <- req_perform(req)
 body     <- resp_body_json(response)
-ai_play_selections <- body$content[]$text
+ai_play_selections <- body$content[[1]]$text # Safe vector index extraction
 
 if (!dir.exists("predictions")) dir.create("predictions")
 writeLines(ai_play_selections, paste0("predictions/plays_", today_date, ".md"))
