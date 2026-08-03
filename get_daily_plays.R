@@ -2,14 +2,13 @@
 # PIPELINE STEP 2: AI PREDICTION ENGINE (get_daily_plays.R)
 # ==============================================================================
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite)
+pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, janitor, stringr)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD DATASETS AND AUTO-CLEAN NAMES
+# 1. LOAD DATASETS AND CLEAN NAMES
 # ------------------------------------------------------------------------------
 message("Loading historical tracking and seasonal datasets...")
 props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE) %>%
-  # This converts all names to clean lowercase with underscores (e.g. 'Bet Type' -> 'bet_type')
   janitor::clean_names() %>% 
   mutate(Parsed_Date = as.Date(date))
 
@@ -30,11 +29,11 @@ if (nrow(schedule) == 0) {
 }
 
 # ------------------------------------------------------------------------------
-# 3. CALCULATE HIGH-LEVEL ROI & MOMENTUM BREAKDOWNS (CLEANED COLUMNS)
+# 3. CALCULATE HIGH-LEVEL ROI & MOMENTUM BREAKDOWNS
 # ------------------------------------------------------------------------------
 message("Calculating macroscopic portfolio ROI metrics...")
 
-# Global Timeline Summary using standardized clean names
+# Global Timeline Summary
 roi_summary <- props_history %>%
   summarize(
     season_bets   = n(),
@@ -50,7 +49,7 @@ roi_summary <- props_history %>%
     roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
-# Micro Strategy Breakdown (Grouping using clean snake_case 'bet_typer')
+# Micro Strategy Breakdown (Using your fixed bet_typer column name)
 bet_type_momentum <- props_history %>%
   group_by(bet_typer) %>%
   summarize(
@@ -65,8 +64,20 @@ bet_type_momentum <- props_history %>%
 # ------------------------------------------------------------------------------
 # 4. CONSTRUCT COMPACT AI PAYLOAD AND SYSTEM PROMPT
 # ------------------------------------------------------------------------------
-# Extract clean matchup labels natively from the loaded schedule table
 matchups_text <- paste(schedule$name, collapse = ", ")
+
+system_prompt <- "You are a quantitative sports betting machine. Your target is maximizing overall portfolio ROI by identifying shifting market efficiencies."
+
+user_prompt <- paste0(
+  "Today's Matchups: ", matchups_text, "\n\n",
+  "--- OVERALL ACCURACY HEADER DATA ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
+  "--- ROI BY BET TYPE STRATIFICATION ---\n", jsonlite::toJSON(bet_type_momentum, auto_unbox = TRUE), "\n\n",
+  "Instructions:\n",
+  "1. CRITICAL: You must begin your response with a clean Markdown dashboard header grid summarizing our overall portfolio health (Total Bets, Profit, and ROI) for Season-Long, Last 30 Days, and Last 14 Days using the exact values from the OVERALL ACCURACY HEADER DATA.\n",
+  "2. Evaluate today's game matchups against our historical data splits.\n",
+  "3. Prioritize 'bet_typer' categories where our last 14-day ROI is climbing significantly above our season baseline (positive momentum), or high steady baselines.\n",
+  "4. Output the top 3 high-value prop plays for today. For each selection, include a brief 2-sentence statistical justification highlighting season-long baseline vs recent momentum."
+)
 
 # ------------------------------------------------------------------------------
 # 5. CALL ANTHROPIC CLAUDE API
@@ -90,7 +101,7 @@ req <- request("https://anthropic.com") %>%
 
 response <- req_perform(req)
 body     <- resp_body_json(response)
-ai_play_selections <- body$content[[1]]$text
+ai_play_selections <- body$content[]$text
 
 # ------------------------------------------------------------------------------
 # 6. ARCHIVE OUTPUT SELECTIONS
