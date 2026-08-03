@@ -18,9 +18,13 @@ today_date <- Sys.Date()
 today_string <- format(today_date, "%Y-%m-%d") # Creates "2026-08-03"
 message(paste("Checking matchups for:", today_string))
 
-# Fetch season schedule and use string detection to match dates without crashing
-schedule <- wehoop::espn_wnba_scoreboard(season = 2026) %>%
-  filter(stringr::str_detect(as.character(date), today_string))
+# Fetch season schedule and cleanly reference the 'date' data column using .data
+schedule <- wehoop::espn_wnba_scoreboard(season = 2026)
+
+if (nrow(schedule) > 0) {
+  schedule <- schedule %>%
+    filter(stringr::str_detect(as.character(.data$date), today_string))
+}
 
 if (nrow(schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
