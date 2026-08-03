@@ -5,11 +5,9 @@ if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD DATASETS AND FORCE EXACT MANUALLY OVERRIDDEN NAMES
+# 1. LOAD DATASETS AND REFORMAT RAW DATA ARRAYS
 # ------------------------------------------------------------------------------
 message("Loading historical tracking backlog...")
-
-# Skip headers and hardcode column mappings strictly by position
 raw_data <- readr::read_csv("data/tracked_props.csv", skip = 1, col_names = FALSE, show_col_types = FALSE)
 
 colnames(raw_data) <- c(
@@ -18,17 +16,20 @@ colnames(raw_data) <- c(
   "stat_value", "profit", "be_prob", "day", "month"
 )
 
+# Robustly clean tracking data formatting elements
 props_history <- raw_data %>%
   mutate(
     Parsed_Date = as.Date(date),
-    # CLEANING FIX: Remove '%' signs if present and force the column into pure numbers
+    # Force text percentages (e.g., 64% or 64) into numerical decimals (0.64)
     win_probability = as.numeric(stringr::str_remove(as.character(win_probability), "%")),
-    # Convert text percentages (e.g., 64) into decimals (0.64) if they are above 1
-    win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability)
+    win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability),
+    # FIX: Force text values or empty rows inside the DTM column to become pure numeric data
+    dtm = as.numeric(as.character(dtm)),
+    profit = as.numeric(as.character(profit))
   )
 
 # ------------------------------------------------------------------------------
-# 2. CHECK TODAY'S MATCHUPS
+# 2. CHECK TODAY'S MATCHUPS (FIXED FOR 2026 SCHEMA)
 # ------------------------------------------------------------------------------
 today_date <- Sys.Date()
 schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
@@ -59,43 +60,47 @@ roi_summary <- props_history %>%
   )
 
 # ------------------------------------------------------------------------------
-# 4. COMPRESS ALL 7,500+ ROWS INTO MICRO-INSIGHT ARRAYS
+# 4. COMPRESS ALL 7,500+ ROWS INTO MACHINE-READABLE INFERENCE VALUES
 # ------------------------------------------------------------------------------
-message("Compressing 7,500+ rows into historical profiling insights...")
+message("Compressing backlog trends...")
 
-# Insight A: Full Backlog Player Profiles (Every bet ever placed on a player)
+# Insight A: Full Backlog Player Profiles
 player_backlog_profiles <- props_history %>%
   group_by(player) %>%
   summarize(
     total_tracked_bets = n(),
-    overall_win_rate   = sum(result %in% c("Win", "W")) / n(),
+    overall_win_rate   = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(),
     accumulated_profit = sum(profit, na.rm = TRUE),
     avg_model_dtm      = mean(dtm, na.rm = TRUE),
-    avg_win_prob_error = mean(win_probability - (result %in% c("Win", "W")), na.rm = TRUE),
     .groups = "drop"
   ) %>%
-  filter(total_tracked_bets >= 3) # Keep players with an established track record
+  filter(total_tracked_bets >= 3)
 
-# Insight B: Full Backlog Strategic Systems (Which combinations win long-term)
+# Insight B: Full Backlog Strategic Systems
 system_backlog_profiles <- props_history %>%
   group_by(bet_type, side) %>%
   summarize(
     total_system_bets = n(),
-    system_win_rate   = sum(result %in% c("Win", "W")) / n(),
+    system_win_rate   = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(),
     system_net_profit = sum(profit, na.rm = TRUE),
     system_roi        = (system_net_profit / total_system_bets) * 100,
     .groups = "drop"
   )
 
-# Insight C: Recent Momentum Sandbox (Last 30 bets to gauge active market shifts)
+# Insight C: Active 30-Bet Momentum Layer
 recent_30_momentum <- props_history %>%
   tail(30) %>%
   select(player, bet_type, side, line, dtm, result, profit)
 
 # ------------------------------------------------------------------------------
-# 5. CONSTRUCT DATA PAYLOAD AND RUN CLAUDE
+# 5. CONSTRUCT COMPACT AI DATA PAYLOAD AND TRANSMIT
 # ------------------------------------------------------------------------------
-matchups_text <- if("matchup" %in% names(schedule)) paste(schedule$matchup, collapse = ", ") else paste(schedule$name, collapse = ", ")
+# FIX: Handle variation in table name updates between 'matchup' and 'name'
+matchups_text <- if("matchup" %in% names(schedule)) {
+  paste(schedule$matchup, collapse = ", ")
+} else {
+  paste(schedule$name, collapse = ", ")
+}
 
 system_prompt <- "You are a specialized risk-management AI for a sports analytics firm. Your goal is utilizing heavily aggregated data layers to isolate sports betting inefficiencies."
 
@@ -112,9 +117,7 @@ user_prompt <- paste0(
   "4. Provide a clear 2-sentence mathematical defense for each play contrasting long-term baseline results against the recent 30-bet momentum layer."
 )
 
-# ------------------------------------------------------------------------------
-# 5. CALL ANTHROPIC CLAUDE API
-# ------------------------------------------------------------------------------
+# API Post Request Execution
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
@@ -126,7 +129,7 @@ req <- request("https://anthropic.com") %>%
     `content-type`      = "application/json"
   ) %>%
   req_body_json(list(
-    model      = "claude-sonnet-5", # Correct active endpoint ID
+    model      = "claude-sonnet-5",
     max_tokens = 1200,
     system     = system_prompt,
     messages   = list(list(role = "user", content = user_prompt))
@@ -134,4 +137,8 @@ req <- request("https://anthropic.com") %>%
 
 response <- req_perform(req)
 body     <- resp_body_json(response)
-ai_play_selections <- body$content[[1]]$text # FIX: Changed [] to [[1]] for clean list parsing
+ai_play_selections <- body$content[[1]]$text # Explicit vector index unpacking fix
+
+if (!dir.exists("predictions")) dir.create("predictions")
+writeLines(ai_play_selections, paste0("predictions/plays_", today_date, ".md"))
+message("Success! Selections written.")
