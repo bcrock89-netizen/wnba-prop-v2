@@ -5,9 +5,11 @@ if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD FULL DATASETS
+# 1. LOAD DATASETS AND FORCE EXACT MANUALLY OVERRIDDEN NAMES
 # ------------------------------------------------------------------------------
 message("Loading historical tracking backlog...")
+
+# Skip headers and hardcode column mappings strictly by position
 raw_data <- readr::read_csv("data/tracked_props.csv", skip = 1, col_names = FALSE, show_col_types = FALSE)
 
 colnames(raw_data) <- c(
@@ -17,7 +19,13 @@ colnames(raw_data) <- c(
 )
 
 props_history <- raw_data %>%
-  mutate(Parsed_Date = as.Date(date))
+  mutate(
+    Parsed_Date = as.Date(date),
+    # CLEANING FIX: Remove '%' signs if present and force the column into pure numbers
+    win_probability = as.numeric(stringr::str_remove(as.character(win_probability), "%")),
+    # Convert text percentages (e.g., 64) into decimals (0.64) if they are above 1
+    win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability)
+  )
 
 # ------------------------------------------------------------------------------
 # 2. CHECK TODAY'S MATCHUPS
