@@ -15,11 +15,12 @@ props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALS
 # 2. CHECK TODAY'S SCHEDULE VIA WEHOOP
 # ------------------------------------------------------------------------------
 today_date <- Sys.Date()
-message(paste("Checking matchups for:", today_date))
+today_string <- format(today_date, "%Y-%m-%d") # Creates "2026-08-03"
+message(paste("Checking matchups for:", today_string))
 
-# Fetch the entire season schedule data frame and filter by today's date locally
+# Fetch season schedule and use string detection to match dates without crashing
 schedule <- wehoop::espn_wnba_scoreboard(season = 2026) %>%
-  filter(as.Date(date) == today_date)
+  filter(stringr::str_detect(as.character(date), today_string))
 
 if (nrow(schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
