@@ -49,7 +49,7 @@ roi_summary <- props_history %>%
     roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
-# Micro Strategy Breakdown (ROI by specific Prop Type)
+# Micro Strategy Breakdown (FIXED: Changed `Bet Typer` to `Bet Typer`)
 bet_type_momentum <- props_history %>%
   group_by(`Bet Typer`) %>%
   summarize(
