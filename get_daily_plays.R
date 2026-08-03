@@ -15,16 +15,11 @@ props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALS
 # 2. CHECK TODAY'S SCHEDULE VIA WEHOOP
 # ------------------------------------------------------------------------------
 today_date <- Sys.Date()
-today_string <- format(today_date, "%Y-%m-%d") # Creates "2026-08-03"
-message(paste("Checking matchups for:", today_string))
+message(paste("Checking matchups for:", today_date))
 
-# Fetch season schedule and cleanly reference the 'date' data column using .data
-schedule <- wehoop::espn_wnba_scoreboard(season = 2026)
-
-if (nrow(schedule) > 0) {
-  schedule <- schedule %>%
-    filter(stringr::str_detect(as.character(.data$date), today_string))
-}
+# Use the cleaner, pre-structured schedule data loader function
+schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
+  filter(as.Date(game_date) == today_date)
 
 if (nrow(schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
@@ -69,14 +64,8 @@ bet_type_momentum <- props_history %>%
 # ------------------------------------------------------------------------------
 # 4. CONSTRUCT COMPACT AI PAYLOAD AND SYSTEM PROMPT
 # ------------------------------------------------------------------------------
-# Fallback logic to ensure we extract game descriptions cleanly from the scoreboard
-matchups_text <- if("matchup" %in% names(schedule)) {
-  paste(schedule$matchup, collapse = ", ")
-} else if("short_name" %in% names(schedule)) {
-  paste(schedule$short_name, collapse = ", ")
-} else {
-  "Games are scheduled for today. Check standard league schedule slots."
-}
+# Extract clean matchup labels natively from the loaded schedule table
+matchups_text <- paste(schedule$name, collapse = ", ")
 
 # ------------------------------------------------------------------------------
 # 5. CALL ANTHROPIC CLAUDE API
