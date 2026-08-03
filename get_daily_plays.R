@@ -1,22 +1,29 @@
 # ==============================================================================
-# PIPELINE STEP 2: AI MATCHUP ENGINE (REINFORCED SONNET 4.6 VERSION)
+# PIPELINE STEP 2: AI MATCHUP ENGINE (ROBUST METRICS VERSION)
 # ==============================================================================
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD DATASET AND AUTOMATICALLY SCRUB NUMBER FORMATTING
+# 1. LOAD DATASET AND FORCE ALL HEADERS TO LOWERCASE
 # ------------------------------------------------------------------------------
-message("Loading dataset and auto-scrubbing currency and percentage signs...")
+message("Loading dataset and forcing headers to lowercase...")
+raw_props <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE)
+colnames(raw_props) <- tolower(stringr::str_replace_all(colnames(raw_props), " ", "_"))
 
-props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE) %>%
+props_history <- raw_props %>%
   mutate(
     Parsed_Date = as.Date(date),
-    # Force text metrics into absolute, pure mathematical numbers
+    # Force text formatting metrics into real math numbers safely
     profit = as.numeric(stringr::str_remove_all(as.character(profit), "[\\$, ]")),
     dtm    = as.numeric(stringr::str_remove_all(as.character(dtm), "[\\$, ]")),
     win_probability = as.numeric(stringr::str_remove_all(as.character(win_probability), "[% ]")),
     win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability)
+  ) %>%
+  # SAFE GUARD: Overwrite any coerced NA cells to baseline 0 values to avoid calculations crash
+  mutate(
+    profit = ifelse(is.na(profit), 0, profit),
+    dtm    = ifelse(is.na(dtm), 0, dtm)
   )
 
 # ------------------------------------------------------------------------------
@@ -127,10 +134,10 @@ system_backlog_profiles <- props_history %>%
   group_by(bet_type, side) %>%
   summarize(total_system_bets = n(), system_win_rate = sum(result %in% c("Win", "W"), na.rm = TRUE) / n(), system_net_profit = sum(profit, na.rm = TRUE), system_roi = (system_net_profit / total_system_bets) * 100, .groups = "drop")
 
-recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_typer, side, line, dtm, result, profit)
+recent_30_momentum <- props_history %>% tail(30) %>% select(player, bet_type, side, line, dtm, result, profit)
 
 # ------------------------------------------------------------------------------
-# 5. TRANSMIT INFERENCE PAYLOAD TO CLAUDE (CORRECT BODY FORMATTING)
+# 5. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
 # ------------------------------------------------------------------------------
 matchups_text <- if("matchup" %in% names(today_schedule)) paste(today_schedule$matchup, collapse = ", ") else paste(today_schedule$name, collapse = ", ")
 
@@ -140,7 +147,7 @@ user_prompt <- paste0(
   "--- TODAY'S SCHEDULE, EFFICIENCY RANKINGS, AND FATIGUE METRICS ---\n", jsonlite::toJSON(matchup_metrics_df, auto_unbox = TRUE), "\n\n",
   "--- PORTFOLIO TIMELINE ROI SUMMARY ---\n", jsonlite::toJSON(roi_summary, auto_unbox = TRUE), "\n\n",
   "--- HISTORICAL SPREADSHEET PLAYER BASELINES ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
-  "--- HISTORICAL STRATEGIC SYSTEM PROP TYPER ROIs ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
+  "--- HISTORICAL STRATEGIC SYSTEM PROP type ROIs ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT 30-BET ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Season-Long, Last 30, and Last 14 Days.\n",
@@ -155,30 +162,27 @@ user_prompt <- paste0(
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
-# Build strict manual raw JSON body structure to prevent nesting errors
 payload <- list(
-  model = "claude-sonnet-4-6", # Pinned to canonical Sonnet 4.6 ID
+  model = "claude-3-5-sonnet-20241022",
   max_tokens = 1200,
   temperature = 0.2,
   system = system_prompt,
-  messages = list(
-    list(role = "user", content = user_prompt)
-  )
+  messages = list(list(role = "user", content = user_prompt))
 )
 
-message("Transmitting data to Claude Sonnet 4.6...")
+message("Transmitting data to Claude Sonnet...")
 req <- request("https://anthropic.com") %>%
   req_headers(
     `x-api-key`         = api_key,
     `anthropic-version` = "2023-06-01",
     `content-type`      = "application/json"
   ) %>%
-  req_body_raw(jsonlite::toJSON(payload, auto_unbox = TRUE), "application/json") %>%
+  req_body_json(payload) %>%
   req_timeout(60)
 
 response <- req_perform(req)
 body     <- resp_body_json(response)
-ai_play_selections <- body$content[[1]]$text # Robust index selection fix
+ai_play_selections <- body$content[[1]]$text
 
 if (!dir.exists("predictions")) dir.create("predictions")
 writeLines(ai_play_selections, paste0("predictions/plays_", today_date, ".md"))
