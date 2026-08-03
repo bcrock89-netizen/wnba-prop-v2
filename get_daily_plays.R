@@ -5,11 +5,13 @@ if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
 pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite)
 
 # ------------------------------------------------------------------------------
-# 1. LOAD DATASETS
+# 1. LOAD DATASETS AND AUTO-CLEAN NAMES
 # ------------------------------------------------------------------------------
 message("Loading historical tracking and seasonal datasets...")
 props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALSE) %>%
-  mutate(Parsed_Date = as.Date(Date))
+  # This converts all names to clean lowercase with underscores (e.g. 'Bet Typer' -> 'bet_typer')
+  janitor::clean_names() %>% 
+  mutate(Parsed_Date = as.Date(date))
 
 # ------------------------------------------------------------------------------
 # 2. CHECK TODAY'S SCHEDULE VIA WEHOOP
@@ -17,7 +19,6 @@ props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALS
 today_date <- Sys.Date()
 message(paste("Checking matchups for:", today_date))
 
-# Use the cleaner, pre-structured schedule data loader function
 schedule <- wehoop::load_wnba_schedule(seasons = 2026) %>%
   filter(as.Date(game_date) == today_date)
 
@@ -29,34 +30,34 @@ if (nrow(schedule) == 0) {
 }
 
 # ------------------------------------------------------------------------------
-# 3. CALCULATE HIGH-LEVEL ROI & MOMENTUM BREAKDOWNS
+# 3. CALCULATE HIGH-LEVEL ROI & MOMENTUM BREAKDOWNS (CLEANED COLUMNS)
 # ------------------------------------------------------------------------------
 message("Calculating macroscopic portfolio ROI metrics...")
 
-# Global Timeline Summary
+# Global Timeline Summary using standardized clean names
 roi_summary <- props_history %>%
   summarize(
     season_bets   = n(),
-    season_profit = sum(Profit, na.rm = TRUE),
+    season_profit = sum(profit, na.rm = TRUE),
     season_roi    = (season_profit / season_bets) * 100,
     
     bets_30       = sum(Parsed_Date >= (today_date - 30), na.rm = TRUE),
-    profit_30     = sum(ifelse(Parsed_Date >= (today_date - 30), Profit, 0), na.rm = TRUE),
+    profit_30     = sum(ifelse(Parsed_Date >= (today_date - 30), profit, 0), na.rm = TRUE),
     roi_30        = (profit_30 / max(bets_30, 1)) * 100,
     
     bets_14       = sum(Parsed_Date >= (today_date - 14), na.rm = TRUE),
-    profit_14     = sum(ifelse(Parsed_Date >= (today_date - 14), Profit, 0), na.rm = TRUE),
+    profit_14     = sum(ifelse(Parsed_Date >= (today_date - 14), profit, 0), na.rm = TRUE),
     roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
-# Micro Strategy Breakdown (FIXED: Changed `Bet Typer` to `Bet Typer`)
+# Micro Strategy Breakdown (Grouping using clean snake_case 'bet_typer')
 bet_type_momentum <- props_history %>%
-  group_by(`Bet Typer`) %>%
+  group_by(bet_typer) %>%
   summarize(
     season_tracked    = n(),
-    season_roi        = (sum(Profit, na.rm = TRUE) / n()) * 100,
+    season_roi        = (sum(profit, na.rm = TRUE) / n()) * 100,
     recent_14_tracked = sum(Parsed_Date >= (today_date - 14), na.rm = TRUE),
-    recent_14_roi     = (sum(ifelse(Parsed_Date >= (today_date - 14), Profit, 0), na.rm = TRUE) / max(recent_14_tracked, 1)) * 100,
+    recent_14_roi     = (sum(ifelse(Parsed_Date >= (today_date - 14), profit, 0), na.rm = TRUE) / max(recent_14_tracked, 1)) * 100,
     .groups           = "drop"
   ) %>%
   filter(season_tracked >= 15)
