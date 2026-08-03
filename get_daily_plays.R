@@ -17,8 +17,9 @@ props_history <- readr::read_csv("data/tracked_props.csv", show_col_types = FALS
 today_date <- Sys.Date()
 message(paste("Checking matchups for:", today_date))
 
-# FIX: Changed espn_wnba_schedule to espn_wnba_scoreboard
-schedule <- wehoop::espn_wnba_scoreboard(dates = format(today_date, "%Y%m%d"))
+# Fetch the entire season schedule data frame and filter by today's date locally
+schedule <- wehoop::espn_wnba_scoreboard(season = 2026) %>%
+  filter(as.Date(date) == today_date)
 
 if (nrow(schedule) == 0) {
   if (!dir.exists("predictions")) dir.create("predictions")
