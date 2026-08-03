@@ -35,6 +35,7 @@ jobs:
             any::pacman
             any::httr2
             any::jsonlite
+            any::janitor
 
       - name: 4. Execute Data Scraper (wehoop)
         run: Rscript scrape_season.R
