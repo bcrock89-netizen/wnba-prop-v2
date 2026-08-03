@@ -208,7 +208,8 @@ api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
 payload <- list(
-  model = "claude-3-5-sonnet-20241022",
+  # UPGRADED: Pinned to the absolute newest Claude 3.7 Sonnet engine
+  model = "claude-3-7-sonnet-latest",
   max_tokens = 1200,
   temperature = 0.2,
   system = system_prompt,
