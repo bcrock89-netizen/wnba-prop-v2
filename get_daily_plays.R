@@ -49,9 +49,9 @@ roi_summary <- props_history %>%
     roi_14        = (profit_14 / max(bets_14, 1)) * 100
   )
 
-# Micro Strategy Breakdown (Using your fixed bet_typer column name)
+# Micro Strategy Breakdown (Using your fixed bet_type column name)
 bet_type_momentum <- props_history %>%
-  group_by(bet_typer) %>%
+  group_by(bet_type) %>%
   summarize(
     season_tracked    = n(),
     season_roi        = (sum(profit, na.rm = TRUE) / n()) * 100,
@@ -75,7 +75,7 @@ user_prompt <- paste0(
   "Instructions:\n",
   "1. CRITICAL: You must begin your response with a clean Markdown dashboard header grid summarizing our overall portfolio health (Total Bets, Profit, and ROI) for Season-Long, Last 30 Days, and Last 14 Days using the exact values from the OVERALL ACCURACY HEADER DATA.\n",
   "2. Evaluate today's game matchups against our historical data splits.\n",
-  "3. Prioritize 'bet_typer' categories where our last 14-day ROI is climbing significantly above our season baseline (positive momentum), or high steady baselines.\n",
+  "3. Prioritize 'bet_type' categories where our last 14-day ROI is climbing significantly above our season baseline (positive momentum), or high steady baselines.\n",
   "4. Output the top 3 high-value prop plays for today. For each selection, include a brief 2-sentence statistical justification highlighting season-long baseline vs recent momentum."
 )
 
