@@ -261,7 +261,11 @@ if (resp_status(response) >= 400) {
 
 body <- resp_body_json(response)
 
-ai_play_selections <- body$content[[1]]$text
+text_blocks <- Filter(function(block) identical(block$type, "text"), body$content)
+if (length(text_blocks) == 0) {
+  stop("Anthropic API response contained no text block: ", jsonlite::toJSON(body, auto_unbox = TRUE))
+}
+ai_play_selections <- text_blocks[[1]]$text
 
 if (!dir.exists("predictions")) dir.create("predictions")
 writeLines(ai_play_selections, paste0("predictions/plays_", today_date, ".md"))
