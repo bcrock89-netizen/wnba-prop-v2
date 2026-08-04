@@ -233,7 +233,7 @@ if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is mis
 
 payload <- list(
   model = "claude-sonnet-5",
-  max_tokens = 1200,
+  max_tokens = 4000,
   system = system_prompt,
   messages = list(list(role = "user", content = user_prompt))
 )
@@ -264,6 +264,9 @@ body <- resp_body_json(response)
 text_blocks <- Filter(function(block) identical(block$type, "text"), body$content)
 if (length(text_blocks) == 0) {
   stop("Anthropic API response contained no text block: ", jsonlite::toJSON(body, auto_unbox = TRUE))
+}
+if (identical(body$stop_reason, "max_tokens")) {
+  stop("Anthropic response was truncated by max_tokens before finishing. Increase max_tokens.")
 }
 ai_play_selections <- text_blocks[[1]]$text
 
