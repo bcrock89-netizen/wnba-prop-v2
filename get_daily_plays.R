@@ -248,7 +248,10 @@ user_prompt <- paste0(
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
   "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
-  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play naming the specific book and line (using only the books present in the data - do not assume any particular set of books) offering the best value versus your projection. If no odds data was provided, omit this bullet entirely - do not invent prices."
+  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play (using only the books present in the data - do not assume any particular set of books). Compare your projection and historical backlog trends against every line offered across books for that player/prop, and:\n",
+  "   - If one book simply offers a better price on the same line, name that book and line.\n",
+  "   - If the backlog data suggests the consensus line itself is mispriced (set too high or too low relative to your projection and historical performance), say so explicitly and recommend the specific alt line and side (over/under) and book that best exploits the gap, explaining why the market line looks off.\n",
+  "   If no odds data was provided, omit this bullet entirely - do not invent prices or lines that weren't in the data."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
