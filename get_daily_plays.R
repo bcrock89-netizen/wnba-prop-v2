@@ -191,7 +191,9 @@ if (file.exists(odds_path)) {
   message("Loading today's sportsbook odds from data/todays_odds.csv...")
   todays_odds <- readr::read_csv(odds_path, show_col_types = FALSE)
   colnames(todays_odds) <- tolower(stringr::str_replace_all(colnames(todays_odds), " ", "_"))
-  todays_odds <- todays_odds %>% filter(as.Date(date) == today_date)
+  todays_odds <- todays_odds %>%
+    filter(as.Date(date) == today_date) %>%
+    mutate(implied_probability = ifelse(odds < 0, -odds / (-odds + 100), 100 / (odds + 100)))
 
   if (nrow(todays_odds) == 0) {
     message("todays_odds.csv exists but has no rows for today's date - skipping alt line analysis.")
@@ -239,19 +241,17 @@ user_prompt <- paste0(
   "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- FULL ALL-TIME BACKLOG SYSTEM PROP type ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
-  "--- TODAY'S SPORTSBOOK ALT LINES ---\n", todays_odds_json, "\n\n",
+  "--- TODAY'S SPORTSBOOK ALT LINES (odds are American odds; implied_probability is the book's vig-included implied win probability as a decimal) ---\n", todays_odds_json, "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
   "2. Select at least 6 high-value prop plays for today, ranked from strongest to weakest edge.\n",
   "3. Critically analyze lines where teams are on a back-to-back or have severely diminished rest metrics while on the road.\n",
-  "4. For each play, use this exact structure:\n",
+  "4. For each of the 6+ plays, use this exact structure:\n",
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
   "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
-  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play (using only the books present in the data - do not assume any particular set of books). Compare your projection and historical backlog trends against every line offered across books for that player/prop, and:\n",
-  "   - If one book simply offers a better price on the same line, name that book and line.\n",
-  "   - If the backlog data suggests the consensus line itself is mispriced (set too high or too low relative to your projection and historical performance), say so explicitly and recommend the specific alt line and side (over/under) and book that best exploits the gap, explaining why the market line looks off.\n",
-  "   If no odds data was provided, omit this bullet entirely - do not invent prices or lines that weren't in the data."
+  "   * **Alt Line Value (optional):** Only include this bullet if the sportsbook data above happens to cover this same player/prop, and only if a book offers a clearly better line or price than the others for it.\n",
+  "5. Separately from the 6+ plays above, add a **+EV Opportunities** section that scans ALL sportsbook alt lines provided above - including players/props that are NOT among your 6+ selections. For each line, estimate a win probability from your projection and historical backlog trends, compare it to that line's implied_probability, and surface any line where your estimated probability meaningfully exceeds the implied probability (positive expected value). For each +EV opportunity found, list: player, prop, side, line, book, odds, implied probability, your estimated probability, the edge (your estimate minus implied probability), and a short reasoning grounded in the backlog/matchup data for why the market is off. Only use books, lines, and odds that literally appear in the data above - never invent numbers. If no odds data was provided, or no +EV edges are found, state that plainly instead of forcing a result."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
