@@ -239,7 +239,7 @@ user_prompt <- paste0(
   "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- FULL ALL-TIME BACKLOG SYSTEM PROP type ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
-  "--- TODAY'S SPORTSBOOK ALT LINES (FANDUEL, DRAFTKINGS, CAESARS, BETMGM) ---\n", todays_odds_json, "\n\n",
+  "--- TODAY'S SPORTSBOOK ALT LINES ---\n", todays_odds_json, "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
   "2. Select the top 3 high-value prop plays for today.\n",
@@ -248,7 +248,7 @@ user_prompt <- paste0(
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
   "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
-  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play naming the specific book (FanDuel/DraftKings/Caesars/BetMGM) and line offering the best value versus your projection. If no odds data was provided, omit this bullet entirely - do not invent prices."
+  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play naming the specific book and line (using only the books present in the data - do not assume any particular set of books) offering the best value versus your projection. If no odds data was provided, omit this bullet entirely - do not invent prices."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
