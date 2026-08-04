@@ -182,26 +182,45 @@ recent_30_momentum <- props_history %>%
   select(player, bet_type, side, line, dtm, result, profit)
 
 # ------------------------------------------------------------------------------
-# 5b. LOAD TODAY'S SPORTSBOOK ALT LINES (OPTIONAL, MANUALLY UPLOADED CSV)
+# 5b. LOAD TODAY'S PROP LINES (OPTIONAL, MANUALLY UPLOADED CSV)
 # ------------------------------------------------------------------------------
+# Only "date" and "odds" are required columns. Everything else (book,
+# win_probability, predicted_value, etc.) is optional and passed through
+# as-is if present - this supports both a multi-book odds export and a
+# single-source daily prop list like your own model's projections.
 odds_path <- "data/todays_odds.csv"
-todays_odds_json <- "No sportsbook odds file uploaded for today."
+todays_props_json <- "No daily props file uploaded for today."
 
 if (file.exists(odds_path)) {
-  message("Loading today's sportsbook odds from data/todays_odds.csv...")
-  todays_odds <- readr::read_csv(odds_path, show_col_types = FALSE)
-  colnames(todays_odds) <- tolower(stringr::str_replace_all(colnames(todays_odds), " ", "_"))
-  todays_odds <- todays_odds %>%
+  message("Loading today's props from data/todays_odds.csv...")
+  todays_props <- readr::read_csv(odds_path, show_col_types = FALSE)
+  colnames(todays_props) <- tolower(stringr::str_replace_all(colnames(todays_props), " ", "_"))
+
+  if (!all(c("date", "odds") %in% names(todays_props))) {
+    stop("data/todays_odds.csv is missing required 'date' and/or 'odds' columns.")
+  }
+
+  todays_props <- todays_props %>%
     filter(as.Date(date) == today_date) %>%
     mutate(implied_probability = ifelse(odds < 0, -odds / (-odds + 100), 100 / (odds + 100)))
 
-  if (nrow(todays_odds) == 0) {
-    message("todays_odds.csv exists but has no rows for today's date - skipping alt line analysis.")
+  # If the file already includes a model win_probability, normalize it to a
+  # decimal and precompute the edge in R rather than leaving that math to Claude
+  if ("win_probability" %in% names(todays_props)) {
+    todays_props <- todays_props %>%
+      mutate(
+        win_probability = ifelse(win_probability > 1, win_probability / 100, win_probability),
+        edge = win_probability - implied_probability
+      )
+  }
+
+  if (nrow(todays_props) == 0) {
+    message("todays_odds.csv exists but has no rows for today's date - skipping daily props analysis.")
   } else {
-    todays_odds_json <- jsonlite::toJSON(todays_odds, auto_unbox = TRUE)
+    todays_props_json <- jsonlite::toJSON(todays_props, auto_unbox = TRUE)
   }
 } else {
-  message("No todays_odds.csv found - skipping alt line analysis.")
+  message("No todays_odds.csv found - skipping daily props analysis.")
 }
 
 # ------------------------------------------------------------------------------
@@ -241,16 +260,16 @@ user_prompt <- paste0(
   "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- FULL ALL-TIME BACKLOG SYSTEM PROP type ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
-  "--- TODAY'S SPORTSBOOK ALT LINES (odds are American odds; implied_probability is the book's vig-included implied win probability as a decimal) ---\n", todays_odds_json, "\n\n",
+  "--- TODAY'S PROP LINES (odds are American odds; implied_probability is the market's vig-included implied win probability as a decimal; when present, win_probability is your own model's probability and edge = win_probability minus implied_probability, already computed) ---\n", todays_props_json, "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
   "2. Add a **Top Plays** section with 3 to 5 high-value prop plays for today, ranked from strongest to weakest edge. Critically factor in teams on a back-to-back or with severely diminished rest while on the road. For each play, use this exact structure:\n",
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
   "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
-  "3. Add a separate **Alt Line Plays** section, independent from the Top Plays above (it may reuse the same players/props or introduce different ones). Scan the sportsbook alt lines data and surface plays where a specific book offers a line or price that stands out as good value versus your projection - either a better price on a standard line, or a shifted line (higher/lower) that's easier to clear than the consensus. For each one, name the player, prop, side, line, book, and odds, and give a short reasoning grounded in the projection/backlog data for why that specific line/book is attractive. Only use books, lines, and odds that literally appear in the data above.\n",
-  "4. Add a separate **+EV Opportunities** section, independent from the sections above. Scan ALL the sportsbook alt lines data. For each line, estimate a win probability from your projection and historical backlog trends, compare it to that line's implied_probability, and surface any line where your estimated probability meaningfully exceeds the implied probability (positive expected value). For each +EV opportunity found, list: player, prop, side, line, book, odds, implied probability, your estimated probability, the edge (your estimate minus implied probability), and a short reasoning grounded in the backlog/matchup data for why the market is off. Only use books, lines, and odds that literally appear in the data above - never invent numbers.\n",
-  "5. If no sportsbook odds data was provided for today, state that plainly and omit the Alt Line Plays and +EV Opportunities sections entirely rather than forcing a result."
+  "3. Add a separate **Alt Line Plays** section, independent from the Top Plays above (it may reuse the same players/props or introduce different ones). Scan the prop line data and surface plays where the line itself looks mispriced - e.g. a predicted_value or projection that diverges meaningfully from the line, making the over or under unusually easy to clear. If the data includes a book/sportsbook column, name it; if it doesn't, just name the player, prop, side, and line. Only use lines and values that literally appear in the data above.\n",
+  "4. Add a separate **+EV Opportunities** section, independent from the sections above. If the data includes a precomputed 'edge' column, list every row with a positive, meaningful edge (your model's win_probability exceeding the market's implied_probability), ranked strongest edge first. If no edge column is present, estimate a win probability yourself from your projection and historical backlog trends and compare it to implied_probability instead. For each opportunity, list: player, prop, side, line, odds, implied probability, win probability, the edge, and a short reasoning grounded in the backlog/matchup data for why the market looks off. Only use values that literally appear in the data above - never invent numbers.\n",
+  "5. If no prop line data was provided for today, state that plainly and omit the Alt Line Plays and +EV Opportunities sections entirely rather than forcing a result."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
