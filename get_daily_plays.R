@@ -214,9 +214,33 @@ if (file.exists(odds_path)) {
       )
   }
 
+  # Cap how many rows get sent to Claude so response length (and therefore
+  # token usage / latency) stays bounded regardless of how large the daily
+  # file gets. Keep the strongest +EV edges and the biggest line/prediction
+  # divergences (a proxy for "mispriced line" candidates), deduplicated.
+  MAX_PROP_ROWS <- 20
+  if (nrow(todays_props) > MAX_PROP_ROWS) {
+    top_edge <- if ("edge" %in% names(todays_props)) {
+      todays_props %>% arrange(desc(edge)) %>% head(10)
+    } else {
+      todays_props %>% head(10)
+    }
+    top_divergence <- if (all(c("predicted_value", "line") %in% names(todays_props))) {
+      todays_props %>%
+        mutate(.abs_divergence = abs(predicted_value - line)) %>%
+        arrange(desc(.abs_divergence)) %>%
+        select(-.abs_divergence) %>%
+        head(10)
+    } else {
+      todays_props %>% head(10)
+    }
+    todays_props <- bind_rows(top_edge, top_divergence) %>% distinct()
+  }
+
   if (nrow(todays_props) == 0) {
     message("todays_odds.csv exists but has no rows for today's date - skipping daily props analysis.")
   } else {
+    message(paste("Sending", nrow(todays_props), "prop rows to Claude for alt line/EV analysis."))
     todays_props_json <- jsonlite::toJSON(todays_props, auto_unbox = TRUE)
   }
 } else {
@@ -267,8 +291,8 @@ user_prompt <- paste0(
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
   "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
-  "3. Add a separate **Alt Line Plays** section, independent from the Top Plays above (it may reuse the same players/props or introduce different ones). Scan the prop line data and surface plays where the line itself looks mispriced - e.g. a predicted_value or projection that diverges meaningfully from the line, making the over or under unusually easy to clear. If the data includes a book/sportsbook column, name it; if it doesn't, just name the player, prop, side, and line. Only use lines and values that literally appear in the data above.\n",
-  "4. Add a separate **+EV Opportunities** section, independent from the sections above. If the data includes a precomputed 'edge' column, list every row with a positive, meaningful edge (your model's win_probability exceeding the market's implied_probability), ranked strongest edge first. If no edge column is present, estimate a win probability yourself from your projection and historical backlog trends and compare it to implied_probability instead. For each opportunity, list: player, prop, side, line, odds, implied probability, win probability, the edge, and a short reasoning grounded in the backlog/matchup data for why the market looks off. Only use values that literally appear in the data above - never invent numbers.\n",
+  "3. Add a separate **Alt Line Plays** section, independent from the Top Plays above (it may reuse the same players/props or introduce different ones). Scan the prop line data and surface UP TO 5 plays where the line itself looks mispriced - e.g. a predicted_value or projection that diverges meaningfully from the line, making the over or under unusually easy to clear. Pick only the strongest few, not every candidate. If the data includes a book/sportsbook column, name it; if it doesn't, just name the player, prop, side, and line. Only use lines and values that literally appear in the data above.\n",
+  "4. Add a separate **+EV Opportunities** section, independent from the sections above. If the data includes a precomputed 'edge' column, list UP TO 8 rows with the strongest positive edge (your model's win_probability exceeding the market's implied_probability), ranked strongest edge first - do not list every positive-edge row, only the strongest few. If no edge column is present, estimate a win probability yourself from your projection and historical backlog trends and compare it to implied_probability instead, still capped at 8. For each opportunity, list: player, prop, side, line, odds, implied probability, win probability, the edge, and a short reasoning grounded in the backlog/matchup data for why the market looks off. Only use values that literally appear in the data above - never invent numbers.\n",
   "5. If no prop line data was provided for today, state that plainly and omit the Alt Line Plays and +EV Opportunities sections entirely rather than forcing a result."
 )
 
@@ -277,7 +301,7 @@ if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is mis
 
 payload <- list(
   model = "claude-sonnet-5",
-  max_tokens = 16000,
+  max_tokens = 32000,
   system = system_prompt,
   messages = list(list(role = "user", content = user_prompt))
 )
@@ -292,7 +316,7 @@ req <- request("https://api.anthropic.com/v1/messages") %>%
     `content-type` = "application/json"
   ) %>%
   req_body_json(payload) %>%
-  req_timeout(280) %>%
+  req_timeout(400) %>%
   req_error(is_error = function(resp) FALSE)
 
 response <- req_perform(req)
