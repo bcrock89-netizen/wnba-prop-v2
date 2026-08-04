@@ -184,13 +184,30 @@ recent_30_momentum <- props_history %>%
 # ------------------------------------------------------------------------------
 # 6. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
 # ------------------------------------------------------------------------------
-# SCHEMA FIX: Dynamically checks columns for 'matchup', 'name', or 'short_name'
-matchups_text <- if("matchup" %in% names(today_schedule)) {
-  paste(today_schedule$matchup, collapse = ", ")
-} else if("name" %in% names(today_schedule)) {
-  paste(today_schedule$name, collapse = ", ")
+# Build matchup text regardless of which schedule columns exist
+if ("matchup" %in% names(today_schedule)) {
+
+  matchups_text <- paste(today_schedule$matchup, collapse = ", ")
+
+} else if ("name" %in% names(today_schedule)) {
+
+  matchups_text <- paste(today_schedule$name, collapse = ", ")
+
+} else if (all(c("away_name", "home_name") %in% names(today_schedule))) {
+
+  matchups_text <- paste(
+    paste(today_schedule$away_name, "at", today_schedule$home_name),
+    collapse = ", "
+  )
+
+} else if ("short_name" %in% names(today_schedule)) {
+
+  matchups_text <- paste(today_schedule$short_name, collapse = ", ")
+
 } else {
-  paste(today_schedule$short_name, collapse = ", ")
+
+  matchups_text <- "Today's WNBA Schedule"
+
 }
 
 system_prompt <- "You are a specialized risk-management AI for a sports betting syndicate. Your expertise is cross-referencing full historical backlog arrays against recent momentum shifts."
@@ -224,17 +241,24 @@ payload <- list(
 )
 
 message("Transmitting data to Claude Sonnet...")
-req <- request("https://anthropic.com") %>%
+
+req <- request("https://api.anthropic.com/v1/messages") %>%
+  req_method("POST") %>%
   req_headers(
-    `x-api-key`         = api_key,
+    `x-api-key` = api_key,
     `anthropic-version` = "2023-06-01",
-    `content-type`      = "application/json"
+    `content-type` = "application/json"
   ) %>%
-  req_body_raw(jsonlite::toJSON(payload, auto_unbox = TRUE), "application/json") %>%
+  req_body_json(payload) %>%
   req_timeout(60)
 
 response <- req_perform(req)
-body     <- resp_body_json(response)
+
+# Stop immediately if Anthropic returns an API error
+resp_check_status(response)
+
+body <- resp_body_json(response)
+
 ai_play_selections <- body$content[[1]]$text
 
 if (!dir.exists("predictions")) dir.create("predictions")
