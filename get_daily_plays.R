@@ -242,7 +242,7 @@ user_prompt <- paste0(
   "--- TODAY'S SPORTSBOOK ALT LINES ---\n", todays_odds_json, "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
-  "2. Select the top 3 high-value prop plays for today.\n",
+  "2. Select at least 6 high-value prop plays for today, ranked from strongest to weakest edge.\n",
   "3. Critically analyze lines where teams are on a back-to-back or have severely diminished rest metrics while on the road.\n",
   "4. For each play, use this exact structure:\n",
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
@@ -259,7 +259,7 @@ if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is mis
 
 payload <- list(
   model = "claude-sonnet-5",
-  max_tokens = 4000,
+  max_tokens = 8000,
   system = system_prompt,
   messages = list(list(role = "user", content = user_prompt))
 )
