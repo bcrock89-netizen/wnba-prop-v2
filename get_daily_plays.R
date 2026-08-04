@@ -292,7 +292,7 @@ req <- request("https://api.anthropic.com/v1/messages") %>%
     `content-type` = "application/json"
   ) %>%
   req_body_json(payload) %>%
-  req_timeout(60) %>%
+  req_timeout(180) %>%
   req_error(is_error = function(resp) FALSE)
 
 response <- req_perform(req)
