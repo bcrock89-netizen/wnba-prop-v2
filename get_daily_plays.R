@@ -249,12 +249,16 @@ req <- request("https://api.anthropic.com/v1/messages") %>%
     `content-type` = "application/json"
   ) %>%
   req_body_json(payload) %>%
-  req_timeout(60)
+  req_timeout(60) %>%
+  req_error(is_error = function(resp) FALSE)
 
 response <- req_perform(req)
 
-# Stop immediately if Anthropic returns an API error
-resp_check_status(response)
+# Stop immediately if Anthropic returns an API error, printing the
+# response body so the actual reason for the rejection is visible in logs
+if (resp_status(response) >= 400) {
+  stop("Anthropic API error (HTTP ", resp_status(response), "): ", resp_body_string(response))
+}
 
 body <- resp_body_json(response)
 
