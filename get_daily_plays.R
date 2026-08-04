@@ -277,7 +277,7 @@ if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is mis
 
 payload <- list(
   model = "claude-sonnet-5",
-  max_tokens = 16000,
+  max_tokens = 32000,
   system = system_prompt,
   messages = list(list(role = "user", content = user_prompt))
 )
@@ -292,7 +292,7 @@ req <- request("https://api.anthropic.com/v1/messages") %>%
     `content-type` = "application/json"
   ) %>%
   req_body_json(payload) %>%
-  req_timeout(280) %>%
+  req_timeout(400) %>%
   req_error(is_error = function(resp) FALSE)
 
 response <- req_perform(req)
