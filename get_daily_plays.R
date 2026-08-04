@@ -2,7 +2,7 @@
 # PIPELINE STEP 2: AI MATCHUP ENGINE (TIME-ZONE FIXED PRODUCTION VERSION)
 # ==============================================================================
 if (!requireNamespace("pacman", quietly = TRUE)) install.packages("pacman")
-pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr)
+pacman::p_load(wehoop, dplyr, readr, httr2, jsonlite, stringr, lubridate)
 
 # ------------------------------------------------------------------------------
 # 1. LOAD DATASET AND FORCE ALL HEADERS TO LOWERCASE
@@ -232,8 +232,7 @@ api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is missing!")
 
 payload <- list(
-  # UPGRADED: Pinned to the absolute newest Claude 3.7 Sonnet engine
-  model = "claude-3-7-sonnet-latest",
+  model = "claude-sonnet-5",
   max_tokens = 1200,
   temperature = 0.2,
   system = system_prompt,

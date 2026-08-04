@@ -36,6 +36,8 @@ jobs:
             any::httr2
             any::jsonlite
             any::janitor
+            any::stringr
+            any::lubridate
 
       - name: 4. Execute Data Scraper (wehoop)
         run: Rscript scrape_season.R
