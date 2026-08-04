@@ -234,7 +234,6 @@ if (api_key == "") stop("CRITICAL: ANTHROPIC_API_KEY environment variable is mis
 payload <- list(
   model = "claude-sonnet-5",
   max_tokens = 1200,
-  temperature = 0.2,
   system = system_prompt,
   messages = list(list(role = "user", content = user_prompt))
 )
