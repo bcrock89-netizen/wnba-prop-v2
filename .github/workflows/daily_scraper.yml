@@ -5,9 +5,10 @@ name: Daily Basketball Data & AI Plays Pipeline
 
 on:
   schedule:
-    # Runs automatically every single day at 12:00 PM UTC (8:00 AM EST)
+    # Runs automatically every single day at 12:30 PM UTC (8:30 AM ET during
+    # the WNBA season, which runs entirely in EDT/UTC-4 - no DST crossover)
     # This timing ensures today's game lines and daily stats are freshly loaded
-    - cron: '0 12 * * *'
+    - cron: '30 12 * * *'
   workflow_dispatch: # Allows you to click a button and trigger it manually anytime
 
 jobs:

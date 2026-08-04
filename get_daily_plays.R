@@ -177,9 +177,30 @@ system_backlog_profiles <- props_history %>%
     .groups = "drop"
   )
 
-recent_30_momentum <- props_history %>% 
-  tail(30) %>% 
+recent_30_momentum <- props_history %>%
+  tail(30) %>%
   select(player, bet_type, side, line, dtm, result, profit)
+
+# ------------------------------------------------------------------------------
+# 5b. LOAD TODAY'S SPORTSBOOK ALT LINES (OPTIONAL, MANUALLY UPLOADED CSV)
+# ------------------------------------------------------------------------------
+odds_path <- "data/todays_odds.csv"
+todays_odds_json <- "No sportsbook odds file uploaded for today."
+
+if (file.exists(odds_path)) {
+  message("Loading today's sportsbook odds from data/todays_odds.csv...")
+  todays_odds <- readr::read_csv(odds_path, show_col_types = FALSE)
+  colnames(todays_odds) <- tolower(stringr::str_replace_all(colnames(todays_odds), " ", "_"))
+  todays_odds <- todays_odds %>% filter(as.Date(date) == today_date)
+
+  if (nrow(todays_odds) == 0) {
+    message("todays_odds.csv exists but has no rows for today's date - skipping alt line analysis.")
+  } else {
+    todays_odds_json <- jsonlite::toJSON(todays_odds, auto_unbox = TRUE)
+  }
+} else {
+  message("No todays_odds.csv found - skipping alt line analysis.")
+}
 
 # ------------------------------------------------------------------------------
 # 6. TRANSMIT INFERENCE PAYLOAD TO CLAUDE
@@ -218,6 +239,7 @@ user_prompt <- paste0(
   "--- FULL ALL-TIME BACKLOG PLAYER BASELINES (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(player_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- FULL ALL-TIME BACKLOG SYSTEM PROP type ROIs (7,500+ ROWS COMPRESSED) ---\n", jsonlite::toJSON(system_backlog_profiles, auto_unbox = TRUE), "\n\n",
   "--- CURRENT ACTIVE MOMENTUM SNAPSHOT ---\n", jsonlite::toJSON(recent_30_momentum, auto_unbox = TRUE), "\n\n",
+  "--- TODAY'S SPORTSBOOK ALT LINES (FANDUEL, DRAFTKINGS, CAESARS, BETMGM) ---\n", todays_odds_json, "\n\n",
   "Instructions:\n",
   "1. Start your response with a clean Markdown dashboard header grid tracking our overall portfolio performance (Total Bets, Profit, and ROI) for Last 30 Days and Last 14 Days ONLY.\n",
   "2. Select the top 3 high-value prop plays for today.\n",
@@ -225,7 +247,8 @@ user_prompt <- paste0(
   "4. For each play, use this exact structure:\n",
   "   * **Selection:** [Player Name - Prop Type - Over/Under - Line]\n",
   "   * **Matchup, Rest & Travel Matrix:** Detail how today's defensive rankings combined with the team's travel and rest levels create a high-probability situational betting edge.\n",
-  "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer."
+  "   * **Historical System Context:** Defend using your all-time backlog data trends contrasted against the active 14-day momentum layer.\n",
+  "5. If sportsbook alt lines were provided above, add an **Alt Line Value** bullet for each play naming the specific book (FanDuel/DraftKings/Caesars/BetMGM) and line offering the best value versus your projection. If no odds data was provided, omit this bullet entirely - do not invent prices."
 )
 
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
